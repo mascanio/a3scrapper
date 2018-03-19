@@ -1,0 +1,46 @@
+{
+    "Cuerpo de \u00e9lite": {
+        "1": [
+            {
+                "type": "f4m",
+                "episode_name": "Cap\u00edtulo 1: El sobrino del rey",
+                "episode_number": 1,
+                "episode_link": "http://www.atresplayer.com/television/series/cuerpo-de-elite/temporada-1/capitulo-1-captulo-sobrino-rey_2018020200852.html",
+                "episode_manifest": "http://deswowsmootha3player.antena3.com/vsgsm/_definst_/smil:assets6/2018/02/02/DA187397-CF0B-4540-BEFC-3A68207BDDDD/es.smil/manifest.f4m",
+                "resolution": "1280x720"
+            },
+            {
+                "type": "f4m",
+                "episode_name": "Cap\u00edtulo 2: Los Montaner",
+                "episode_number": 2,
+                "episode_link": "http://www.atresplayer.com/television/series/cuerpo-de-elite/temporada-1/capitulo-2-captulo-los-montaner_2018020800838.html",
+                "episode_manifest": "http://deswowsmootha3player.antena3.com/vsgsm/_definst_/smil:assets14/2018/02/08/7E1C3A2C-681B-42E7-AECE-CB49A65030CA/es.smil/manifest.f4m",
+                "resolution": "1280x720"
+            },
+            {
+                "type": "f4m",
+                "episode_name": "Cap\u00edtulo 3: Las Tarjetas Gold",
+                "episode_number": 3,
+                "episode_link": "http://www.atresplayer.com/television/series/cuerpo-de-elite/temporada-1/capitulo-3-captulo-las-tarjetas-gold_2018021801409.html",
+                "episode_manifest": "http://deswowsmootha3player.antena3.com/vsgsm/_definst_/smil:assets8/2018/02/18/6785B823-8F89-418C-844C-CAEFF893853C/es.smil/manifest.f4m",
+                "resolution": "1280x720"
+            },
+            {
+                "type": "f4m",
+                "episode_name": "Cap\u00edtulo 4: La condesa",
+                "episode_number": 4,
+                "episode_link": "http://www.atresplayer.com/television/series/cuerpo-de-elite/temporada-1/capitulo-4-captulo-condesa_2018022200848.html",
+                "episode_manifest": "http://deswowsmootha3player.antena3.com/vsgsm/_definst_/smil:assets15/2018/02/22/ED6E0489-8CBC-49A5-AA89-DD3740AB540C/es.smil/manifest.f4m",
+                "resolution": "1280x720"
+            },
+            {
+                "type": "f4m",
+                "episode_name": "Cap\u00edtulo 5: El f\u00fatbol",
+                "episode_number": 5,
+                "episode_link": "http://www.atresplayer.com/television/series/cuerpo-de-elite/temporada-1/capitulo-5-captulo-ftbol_2018030401515.html",
+                "episode_manifest": "http://deswowsmootha3player.antena3.com/vsgsm/_definst_/smil:assets11/2018/03/04/33320B49-BA0D-4FA0-A83A-0BDC3C11F21C/es.smil/manifest.f4m",
+                "resolution": "1280x720"
+            }
+        ]
+    }
+}
