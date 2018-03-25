@@ -2,7 +2,6 @@ from selenium import webdriver
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.support.ui import WebDriverWait # available since 2.4.0
 from selenium.webdriver.support import expected_conditions as EC # available since 2.26.0
-from collections import defaultdict
 
 import sys
 import json
@@ -15,14 +14,31 @@ from pathlib import Path
 import os
 import errno
 
+from collections import defaultdict
+from multiprocessing import Pool
 import xml.etree.ElementTree as ET
+
+DOWNLOAD_THREADS = 20
+SCRAPPER_THREADS = 20
 
 # {0} is serie title
 # {1} is season number
 # {2} is episode number
 # {3} is episode height
-FILE_TEMPLATE = "downloads/{0}/Season{1:02d}/{0} S{1:02d}E{2:02d} {3}p WEB-DL.mkv"
-FILE_TEMPLATE_NO_RES = "downloads/{0}/Season{1:02d}/{0} S{1:02d}E{2:02d} WEB-DL.mkv"
+FILE_TEMPLATE = "downloads/{0}/Season{1:02d}/{0} S{1:02d}E{2:04d} {3}p WEB-DL.mkv"
+FILE_TEMPLATE_NO_RES = "downloads/{0}/Season{1:02d}/{0} S{1:02d}E{2:04d} WEB-DL.mkv"
+
+# {0} is the brute-forced number, {1} is the id of the vid
+F4M_LINK_TEMPLATES = [
+    "http://deswowsmootha3player.antena3.com/vsgsm/_definst_/smil:assets{0}{1}/es.smil/manifest.f4m",
+    "http://geodeswowsmootha3player.antena3.com/vcgsm/_definst_/smil:assets{0}{1}es.smil/manifest.f4m"
+]
+M3U8_LINK_TEMPLATES =  [
+    "https://vod.antena3.com/vsg/_definst_/assets{0}{1}/000.mp4/playlist.m3u8",
+    "http://deswowa3player.antena3.com/vsg/_definst_/assets{0}{1}/000.mp4/playlist.m3u8",
+    "https://geovod.antena3.com/vcg/_definst_/assets{0}{1}/eshls.smil/playlist.m3u8",
+    "https://geovod.antena3.com/vcg/_definst_/assets{0}{1}/000.mp4/playlist.m3u8"
+]
 
 class D:
     def __init__(self, driver):
@@ -34,7 +50,9 @@ class D:
 def main():
     action = None
     if len(sys.argv) == 1:
+        #action = "previous"
         action = "full"
+        #action = "scrapper-only"
     if len(sys.argv) > 1:
         if sys.argv[1] in ["-f", "--full"]:
             action = "full"
@@ -51,9 +69,10 @@ usage: scrapper.py
             only scrap stdin links and save to out.json
     "-p, --read-prevous-scrapped":
             read previous scrapped from out.json and download
-            """
+"""
             print(help)
             sys.exit(1)
+
     if action in ["full", "scrapper-only"]:
         result = get_series_dict()
     
@@ -61,10 +80,18 @@ usage: scrapper.py
         result = json.load(open('out.json'))
     
     if action in ["full", "previous"]:
+        calls = []
         for (serie_title, seasons) in result.items():
             for (season_number, season) in seasons.items():
                 for episode_dict in season:
-                    download_episode(serie_title, season_number, episode_dict)
+                    # download_episode(serie_title, season_number, episode_dict)
+                    typ = episode_dict["type"]
+                    if typ == "f4m":
+                        download_episode(serie_title, season_number, episode_dict)
+                    else:
+                        calls.append((serie_title, season_number, episode_dict))
+        with Pool(processes=DOWNLOAD_THREADS) as p:
+            p.starmap(download_episode, calls)
 
 def get_series_dict():
     # Create a new instance of the Firefox driver
@@ -96,8 +123,8 @@ def get_series_dict():
                     # Add seasons links to ts
                     for season in reversed(seasons):
                         season_link = season.get_attribute('href')
-                        m = re.search('.*/temporada-([0-9]+)/', season_link)
-                        season_numer = m.group(1)
+                        m = re.search('.*/temporada(\\-)?([0-9]+)/', season_link)
+                        season_numer = m.group(2)
                         print(season_numer + ", " + season_link)
                         ts.append( (season_numer, season_link) )
                     # Iterate over all season links
@@ -110,8 +137,8 @@ def get_series_dict():
 
             else:
                 # Test if direct link to a season
-                m = re.search('.*/temporada-([0-9]+)/', line)
-                season_numer = m.group(1)
+                m = re.search('.*/temporada(\\-)?([0-9]+)/', line)
+                season_numer = m.group(2)
                 print(season_numer)
                 get_video_links(driver, d, result, serie, season_numer, plain)
     with open("out.json", "w") as jsonOut:
@@ -142,65 +169,79 @@ def get_video_links(driver, d, result, serie, season, plain):
         m = re.search('.*/capitulo-([0-9]+)-.*', episode_link)
         episode_number = int(m.group(1))
         
-        id, episode_name = get_episode_id_and_name(driver, episode_link)
-        tmr = get_type_manifest_and_res(id)
-        if tmr is None:
-            print("MANIFEST FOR SERIE " + serie, ", SEASON: " + season + ", EPISODE " + episode_number + " NOT FOUND")
+        a = get_episode_id_and_name(driver, episode_link)
+        # Test if episode is available
+        if a:
+            id, episode_name = a
+            tmr = get_type_manifest_and_res(id)
+            if tmr is None:
+                print("MANIFEST FOR SERIE " + str(serie), ", SEASON: " + str(season) + ", EPISODE " + str(episode_number) + " NOT FOUND")
+            else:
+                (t, manifest_link, resolution) = tmr
+                print(tmr)
+                result[serie][season].append({"type": t, "episode_name": episode_name, "episode_number": episode_number, "episode_link": episode_link, "episode_manifest": manifest_link, "resolution": resolution})
+                    
+                # Print to plain file
+                plain.write(episode_link + "\n")
         else:
-            (t, manifest_link, resolution) = tmr
-        print(tmr)
-        result[serie][season].append({"type": t, "episode_name": episode_name, "episode_number": episode_number, "episode_link": episode_link, "episode_manifest": manifest_link, "resolution": resolution})
-            
-        # Print to plain file
-        plain.write(episode_link + "\n")
+            print("*** EPISODE UNAVAILABLE ***")
+        
 
 def get_episode_id_and_name(driver, episode_link):
     driver.get(episode_link)
     # Get vid ID
     id = driver.find_element_by_css_selector("body > div.shell > div.seccion_home > div > div.container_12.clearfix.pad_10.black_13 > div:nth-child(1) > section.mod_player").get_attribute('data-mod')
+    if not id:
+        return None
     m = re.search('/episodexml/[0-9]+/[0-9]+/[0-9]+/[0-9]+(/[0-9]+/[0-9]+/[0-9]+/.*)\\.json', id)
     id = m.group(1)
-    episode_name = driver.find_element_by_css_selector("body > div.shell > div.seccion_home > div > div.container_12.clearfix.pad_10.black_13 > div:nth-child(1) > section.mod_player_top.clearfix.mar-b_10.antena3 > div > h3").text
+    episode_name = driver.find_element_by_css_selector("body > div.shell > div.seccion_home > div > div.container_12.clearfix.pad_10.black_13 > div:nth-child(1) > section > div > h3").text
     return id, episode_name
+
+def try_f4m(manifest_link):
+    r = requests.get(manifest_link)
+    if r.status_code == 200:
+        # Is a f4m
+        # Read manifest as XML
+        root = ET.fromstring(r.text)
+        # Read res from xml
+        width = root[1].text
+        height = root[2].text
+        resolution = width + "x" + height
+        return ("f4m", manifest_link, resolution)
+    else:
+        return None
+
+def try_m3u8(manifest_link):
+    r = requests.get(manifest_link)
+    if r.status_code == 200:
+        m = re.search('.*RESOLUTION=([0-9]+[xX][0-9]+).*', r.text)
+        resolution = m.group(1)
+        return ("m3u8", manifest_link, resolution)
+    else:
+        return None
 
 def get_type_manifest_and_res(id):
     """
     id is like /2011/11/15/FA98C664-E610-4EBA-A82D-834F7FE2EA33
+    return ("f4m" | "m3u8", manifest_link, resolution)
     """
-    for i in range(0, 100):
-        # Test f4m (antena3)
-        manifest_link = "http://deswowsmootha3player.antena3.com/vsgsm/_definst_/smil:assets" + str(i) + id +  "/es.smil/manifest.f4m"
-        r = requests.get(manifest_link)
-        if r.status_code == 200:
-            # Is a f4m
-            # Read manifest as XML
-            root = ET.fromstring(r.text)
-            # Read res from xml
-            width = root[1].text
-            height = root[2].text
-            resolution = width + "x" + height
-            return ("f4m", manifest_link, resolution)
-        # Test other f4m (laSexta)
-        manifest_link = "http://geodeswowsmootha3player.antena3.com/vcgsm/_definst_/smil:assets" + str(i) + id +  "/es.smil/manifest.f4m"
-        r = requests.get(manifest_link)
-        if r.status_code == 200:
-            # Is a f4m
-            # Read manifest as XML
-            root = ET.fromstring(r.text)
-            # Read res from xml
-            width = root[1].text
-            height = root[2].text
-            resolution = width + "x" + height
-            return ("f4m", manifest_link, resolution)
+    # Brute-force number
+    for i in range(0, 30):
+        # Test f4m
+        for link_template in F4M_LINK_TEMPLATES:
+            manifest_link = link_template.format(str(i), id)
+            r = try_f4m(manifest_link)
+            if r:
+                return r
 
         # Test m3u8
-        manifest_link = "https://vod.antena3.com/vsg/_definst_/assets" + str(i) + id + "/000.mp4/playlist.m3u8"
-        r = requests.get(manifest_link)
-        if r.status_code == 200:
-            m = re.search('.*RESOLUTION=([0-9]+[xX][0-9]+).*', r.text)
-            resolution = m.group(1)
-            return ("m3u8", manifest_link, resolution)
-            
+        for link_template in M3U8_LINK_TEMPLATES:
+            manifest_link = link_template.format(str(i), id)
+            r = try_m3u8(manifest_link)
+            if r:
+                return r
+
     return None
 
 def download_episode(serie_title, season_number, episode_dict):
@@ -238,7 +279,7 @@ def download_episode(serie_title, season_number, episode_dict):
                     raise
         my_file = Path(file_name)
         # Test if exists
-        if not my_file.is_file:
+        if not my_file.is_file():
             # Call ffmpeg
             subprocess.run(call, stdout=subprocess.PIPE)
 
@@ -276,37 +317,3 @@ def get_ffmpeg_params_call(serie_title, season_number, episode_dict):
 
 if __name__ == "__main__":
     main()
-
-# def get_params_call(serie_title, season_number, episode_number, link):
-#     file_name = "{0} S{1:02d}E{2:02d}".format(serie_title, season_number, episode_number)
-#     return ["youtube-dl.exe", "-f",  "bestvideo+bestaudio", "-o", "%%({0})s %%(height)sp WEB-DL.%%(ext)s".format(file_name), "--merge-output-format", "mkv", "--all-subs", "--embed-subs", link]
-
-# def download_episode(serie_title, season_number, episode_number, link):
-#     subprocess.run(get_params_call(serie_title, season_number, episode_number, link), stdout=subprocess.PIPE)
-
-# def get_hdsdump_params_call(serie_title, season_number, episode_number, manifest_link):
-#     file_name = "{0} S{1:02d}E{2:02d}.mkv".format(serie_title, season_number, episode_number)
-#     return ["hdsdump.exe", "--showtime",  "--manifest", manifest_link, "--outfile", file_name]
-
-# def f4m_get_manifest(link):
-#     r = requests.post("http://eljaviero.com/descargarvideosdelatele/index.php", data={"url_noticia":link, "submit_enviar_url":"ok"})
-#     d = json.loads(r.text)
-#     info_bottom = d["info_bottom"]
-#     if not info_bottom:
-#         return None
-#     else:
-#         m = re.search('.*--manifest "(http://.*)" --outfile.*', info_bottom)
-#         return m.group(1)
-        
-# def m3u8_get_manifest_and_res(id):
-#     """
-#     id is like /2011/11/15/FA98C664-E610-4EBA-A82D-834F7FE2EA33
-#     """
-#     for i in range(0, 30):
-#         manifest_link = "https://vod.antena3.com/vsg/_definst_/assets" + str(i) + id + "/000.mp4/playlist.m3u8"
-#         r = requests.get(manifest_link)
-#         if r.status_code == 200:
-#             m = re.search('.*RESOLUTION=([0-9]+x[0-9]+).*', r.text)
-#             resolution = m.group(1)
-#             return (manifest_link, resolution)
-#     return None     
